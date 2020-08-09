@@ -4,8 +4,13 @@ import dotty.tools.dotc.ast._
 import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.core.Decorators._
 import dotty.tools.dotc.plugins._
-import dotty.tools.dotc.transform.Staging
+import dotty.tools.dotc.transform._
+// import dotty.tools.dotc.transform.YCheckPositions
 import dotty.tools.dotc.typer.Inliner
+import dotty.tools.dotc.core.Names._
+import dotty.tools.dotc.core.Constants._
+import dotty.tools.dotc.core.Symbols
+import dotty.tools.dotc.typer._
 
 class MyCompilerPlugin extends StandardPlugin with PluginPhase {
   val name = getClass.getSimpleName
@@ -13,28 +18,68 @@ class MyCompilerPlugin extends StandardPlugin with PluginPhase {
 
   def init(options: List[String]) = this :: Nil
 
-  import tpd._
+  // import tpd._
 
-  override val runsBefore = Set(Staging.name)
+  override val runsBefore = Set("posttyper")
 
-  private def addHook(tree: Tree) given Context: Tree = {
-    the[Context].compilationUnit.needsStaging = true
-    Inliner.inlineCall(
-      Apply(
-        TypeApply(
-          Ident(the[Context].requiredMethodRef("mypackage.MyHooks.myHook")),
-          TypeTree(tree.tpe.widen) :: Nil
+  private def addHook(tree: tpd.Tree)(using context: Context): tpd.Tree = {
+    // context.compilationUnit.needsStaging = true
+    // context.definitions.AbstractFunctionClass
+    // Symbols.defn.staticsMethodRef("")
+    // val a = Symbols.defn.ArrayModule.moduleClass
+    // ???
+
+
+    import untpd._
+    // context.typer.typed(
+    //   untpd.Block(
+    //     List(
+    //       untpd.Apply(untpd.Ident(termName("println")), untpd.Literal(Constant("hooked!")))
+    //     ),
+    //     tree
+    //   )
+    // )
+    object retyper extends Typer
+
+    retyper.typed(
+      Block(
+        List(
+          Apply(Ident(termName("println")), Literal(Constant("hooked!")))
         ),
-        tree :: Nil
-      )
+        tree,
+        // Apply(Select(Select(Ident(termName("mypackage")), termName("MyHooks")), termName("myHook")), tree)
+      ),
+      tree.tpe
     )
+
+    // import tpd._
+    // Apply(
+    //   TypeApply(
+    //     Ident(Symbols.defn.ScalaPredefModule.requiredMethodRef("identity")),
+    //     TypeTree(tree.tpe.widen) :: Nil
+    //   ),
+    //   tree :: Nil
+    // )
   }
 
-  override def transformDefDef(tree: DefDef) given Context : Tree = {
-    if (tree.rhs.isEmpty) {
-      tree
-    } else {
-      cpy.DefDef(tree)(rhs = addHook(tree.rhs))
-    }
+  override def transformIf(tree: tpd.If)(using context: Context): tpd.Tree = {
+    // object retyper extends Typer
+    import untpd._
+
+    context.typer.typed(Apply(Select(Select(Ident(termName("mypackage")), termName("MyHooks")), termName("ifThenElse")), List(
+      tree.cond,
+      tree.thenp,
+      tree.elsep,
+    )))
+
+    // Apply(Select(Select(Ident(termName("mypackage")), termName("MyHooks")), termName("myHook")), tree, tree, tree)
+    tree
   }
+  // override def transformDefDef(tree: tpd.DefDef)(using Context): tpd.Tree = {
+  //   if (tree.rhs.isEmpty) {
+  //     tree
+  //   } else {
+  //     cpy.DefDef(tree)(rhs = addHook(tree.rhs))
+  //   }
+  // }
 }
